@@ -37,6 +37,18 @@
         main {
             padding-bottom: 100px; /* Adjust as needed */
         }
+        
+        /* Custom styles for toggle switch */
+        .toggle-bg:after {
+            content: '';
+            @apply absolute top-1 left-1 bg-white border border-gray-300 rounded-full h-6 w-6 transition shadow-sm;
+        }
+        input:checked + .toggle-bg:after {
+            @apply transform translate-x-full;
+        }
+        input:checked + .toggle-bg {
+            @apply bg-[#36E2A2];
+        }
     </style>
 </head>
 <body class="flex">
@@ -102,9 +114,16 @@
                         <h3 class="text-gray-400 text-sm">Suhu Udara</h3>
                         <p id="temperature-text" class="font-display text-4xl md:text-5xl font-bold mt-2">...°C</p>
                     </div>
-                    <div class="bg-[#1D2926] p-4 rounded-2xl text-center">
-                        <h3 class="text-gray-400 text-sm">Kelembapan Udara</h3>
-                        <p id="humidity-text" class="font-display text-4xl md:text-5xl font-bold mt-2">...%</p>
+                    <!-- Weather Widget -->
+                    <div class="bg-[#1D2926] p-4 rounded-2xl text-center col-span-2 md:col-span-1">
+                        <h3 class="text-gray-400 text-sm">Cuaca Saat Ini</h3>
+                        <div id="weather-widget" class="flex items-center justify-center mt-2 space-x-4">
+                            <i id="weather-icon" data-lucide="cloud-sun" class="w-10 h-10 text-yellow-400"></i>
+                            <div>
+                                <p id="weather-temp" class="font-display text-3xl font-bold">...°C</p>
+                                <p id="weather-desc" class="text-gray-400 text-xs">Loading...</p>
+                            </div>
+                        </div>
                     </div>
                     <button id="water-button" class="bg-[#36E2A2] text-[#121A18] p-4 rounded-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
                         <i data-lucide="cloud-drizzle" class="w-6 h-6 md:w-8 md:h-8"></i>
@@ -116,11 +135,17 @@
 
         <!-- Page: History -->
         <div id="page-history" class="page">
-            <header class="mb-8">
-                <h1 class="font-display text-3xl md:text-4xl font-extrabold">Riwayat Sensor</h1>
-                <p class="text-gray-400">Grafik data sensor selama 24 jam terakhir.</p>
+            <header class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="font-display text-3xl md:text-4xl font-extrabold">Riwayat Sensor</h1>
+                    <p class="text-gray-400">Grafik data sensor selama 24 jam terakhir.</p>
+                </div>
+                <button id="export-csv-button" class="bg-[#36E2A2] text-[#121A18] px-4 py-2 rounded-lg font-bold flex items-center transition-transform hover:scale-105">
+                    <i data-lucide="download" class="w-5 h-5 mr-2"></i>
+                    Export CSV
+                </button>
             </header>
-            <div class="bg-[#1D2926] p-2 md:p-4 rounded-2xl">
+            <div class="bg-[#1D2926] p-2 md:p-4 rounded-2xl h-96">
                 <canvas id="historyChart"></canvas>
             </div>
         </div>
@@ -132,15 +157,25 @@
                 <p class="text-gray-400">Kelola perangkat dan preferensi Anda.</p>
             </header>
             <div class="space-y-6 max-w-2xl">
+                <!-- Automation Card -->
                 <div class="bg-[#1D2926] p-6 rounded-2xl">
-                    <h3 class="font-bold text-xl mb-4">Notifikasi</h3>
-                    <div class="flex justify-between items-center">
-                        <label for="moisture-alert-toggle">Kirim notifikasi jika tanah kering</label>
-                        <button id="moisture-alert-toggle" class="w-14 h-8 rounded-full bg-gray-600 flex items-center p-1 transition-colors duration-300" data-enabled="false">
-                            <span class="w-6 h-6 rounded-full bg-white transform transition-transform duration-300"></span>
-                        </button>
+                    <h3 class="font-bold text-xl mb-4">Penyiraman Otomatis</h3>
+                    <div class="flex justify-between items-center mb-4">
+                        <label for="auto-water-toggle">Aktifkan Otomatisasi</label>
+                        <div class="relative inline-block w-14 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" name="auto-water-toggle" id="auto-water-toggle" class="toggle-checkbox absolute block w-8 h-8 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                            <label for="auto-water-toggle" class="toggle-bg block overflow-hidden h-8 rounded-full bg-gray-600 cursor-pointer"></label>
+                        </div>
+                    </div>
+                    <div id="threshold-setting" class="hidden">
+                        <label for="threshold-input" class="block mb-2">Siram jika kelembapan di bawah:</label>
+                        <div class="flex items-center">
+                            <input type="range" id="threshold-input" min="10" max="60" value="30" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                            <span id="threshold-value" class="ml-4 font-bold w-12 text-center">30%</span>
+                        </div>
                     </div>
                 </div>
+                <!-- Device Card -->
                 <div class="bg-[#1D2926] p-6 rounded-2xl">
                     <h3 class="font-bold text-xl mb-4">Perangkat</h3>
                     <p class="text-gray-400">Saat ini terhubung ke perangkat <strong id="device-id-display" class="text-white">...</strong></p>
@@ -167,6 +202,8 @@
     </nav>
 
     <script>
+    // Wait for the DOM to be fully loaded before running the script
+    document.addEventListener('DOMContentLoaded', function() {
         // --- INITIALIZATION ---
         lucide.createIcons();
 
@@ -177,15 +214,20 @@
                 monstera: { name: 'Monstera', moisture: 0, temperature: 0, humidity: 0, history: [] },
                 aglaonema: { name: 'Aglaonema', moisture: 0, temperature: 0, humidity: 0, history: [] }
             },
-            connection: 'Terputus'
+            connection: 'Terputus',
+            settings: {
+                isAutomationEnabled: false,
+                automationThreshold: 30,
+                lastAutoWatering: null
+            }
         };
 
         // --- DOM ELEMENTS ---
         const pages = document.querySelectorAll('.page');
-        const navLinks = document.querySelectorAll('.nav-item'); // Selects both sidebar and bottom nav items
+        const navLinks = document.querySelectorAll('.nav-item');
         const connectionStatusDesktopEl = document.getElementById('connection-status-desktop');
         const plantSelector = document.getElementById('plant-selector');
-        // Dashboard elements
+        // Dashboard
         const heroPlantName = document.getElementById('hero-plant-name');
         const heroIcon = document.getElementById('hero-icon');
         const heroStatus = document.getElementById('hero-status');
@@ -193,29 +235,27 @@
         const temperatureText = document.getElementById('temperature-text');
         const humidityText = document.getElementById('humidity-text');
         const waterButton = document.getElementById('water-button');
-        // Settings elements
+        // History
+        const exportCsvButton = document.getElementById('export-csv-button');
+        // Settings
         const deviceIdDisplay = document.getElementById('device-id-display');
-        const toggleButton = document.getElementById('moisture-alert-toggle');
-
+        const autoWaterToggle = document.getElementById('auto-water-toggle');
+        const thresholdSetting = document.getElementById('threshold-setting');
+        const thresholdInput = document.getElementById('threshold-input');
+        const thresholdValue = document.getElementById('threshold-value');
+        // Weather
+        const weatherIcon = document.getElementById('weather-icon');
+        const weatherTemp = document.getElementById('weather-temp');
+        const weatherDesc = document.getElementById('weather-desc');
 
         // --- PAGE NAVIGATION ---
         function navigateTo(pageId) {
             pages.forEach(p => p.classList.remove('active'));
             document.getElementById(`page-${pageId}`).classList.add('active');
-            navLinks.forEach(l => {
-                l.classList.toggle('active', l.dataset.page === pageId);
-            });
+            navLinks.forEach(l => l.classList.toggle('active', l.dataset.page === pageId));
             window.location.hash = pageId;
         }
-
-        navLinks.forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                navigateTo(link.dataset.page);
-            });
-        });
-
-        // Handle initial page load from URL hash
+        navLinks.forEach(link => link.addEventListener('click', (e) => { e.preventDefault(); navigateTo(link.dataset.page); }));
         const initialPage = window.location.hash.substring(1) || 'dashboard';
         navigateTo(initialPage);
 
@@ -224,7 +264,6 @@
         const host = 'wss://broker.hivemq.com:8884/mqtt';
         const options = { keepalive: 60, clientId: clientId, clean: true, reconnectPeriod: 1000, connectTimeout: 30 * 1000 };
         
-        console.log('Connecting to MQTT...');
         const client = mqtt.connect(host, options);
         
         const baseTopic = 'tanaman';
@@ -237,20 +276,12 @@
 
         client.on('connect', () => {
             appState.connection = 'Tersambung';
-            deviceIdDisplay.textContent = clientId;
+            if (deviceIdDisplay) deviceIdDisplay.textContent = clientId;
             updateUI();
             Object.values(topics).forEach(topic => client.subscribe(topic, { qos: 0 }));
         });
-
-        client.on('reconnect', () => {
-            appState.connection = 'Menyambung...';
-            updateUI();
-        });
-
-        client.on('error', (err) => {
-            console.error('Connection error: ', err);
-            client.end();
-        });
+        client.on('reconnect', () => { appState.connection = 'Menyambung...'; updateUI(); });
+        client.on('error', (err) => { console.error('Connection error: ', err); client.end(); });
 
         client.on('message', (topic, message) => {
             const payload = message.toString();
@@ -260,43 +291,108 @@
             if (topic === topics.kelembapanTanah) {
                 plantData.moisture = parseInt(payload, 10);
                 plantData.history.push({ t: now, y: plantData.moisture });
+                checkAutomation(plantData.moisture);
             }
-            if (topic === topics.suhu) {
-                plantData.temperature = parseFloat(payload);
-            }
-            if (topic === topics.kelembapanUdara) {
-                plantData.humidity = parseInt(payload, 10);
-            }
+            if (topic === topics.suhu) plantData.temperature = parseFloat(payload);
+            if (topic === topics.kelembapanUdara) plantData.humidity = parseInt(payload, 10);
             
             if (plantData.history.length > 100) plantData.history.shift();
-            
             updateUI();
         });
+
+        // --- ADVANCED FEATURES ---
+        // 1. Automation
+        function checkAutomation(currentMoisture) {
+            if (!appState.settings.isAutomationEnabled) return;
+            
+            const now = new Date();
+            // Cooldown: prevent auto-watering more than once every 10 minutes
+            if (appState.settings.lastAutoWatering && (now - appState.settings.lastAutoWatering < 10 * 60 * 1000)) {
+                return;
+            }
+
+            if (currentMoisture < appState.settings.automationThreshold) {
+                console.log(`AUTOMATION: Moisture (${currentMoisture}%) is below threshold (${appState.settings.automationThreshold}%). Watering plant.`);
+                client.publish(`${topics.kontrolPompa}/${appState.activePlant}`, '1', { qos: 0 });
+                appState.settings.lastAutoWatering = now;
+            }
+        }
+
+        // 2. Weather
+        async function fetchWeather() {
+            const apiKey = '720f97315032e072796044f5cf08dbec';
+            const city = 'Bekasi';
+            const url = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric&lang=id`;
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Weather data not found');
+                const data = await response.json();
+                
+                if(weatherTemp) weatherTemp.textContent = `${Math.round(data.main.temp)}°C`;
+                if(weatherDesc) weatherDesc.textContent = data.weather[0].description;
+                //iconnnn
+                const iconCode = data.weather[0].icon;
+                let lucideIcon = 'cloud-sun';
+                if (iconCode.includes('01')) lucideIcon = 'sun';
+                if (iconCode.includes('02') || iconCode.includes('03') || iconCode.includes('04')) lucideIcon = 'cloud';
+                if (iconCode.includes('09') || iconCode.includes('10')) lucideIcon = 'cloud-rain';
+                if (iconCode.includes('11')) lucideIcon = 'cloud-lightning';
+                if (iconCode.includes('13')) lucideIcon = 'cloud-snow';
+                if (iconCode.includes('50')) lucideIcon = 'wind';
+                if(weatherIcon) weatherIcon.setAttribute('data-lucide', lucideIcon);
+                lucide.createIcons();
+
+            } catch (error) {
+                console.error("Failed to fetch weather:", error);
+                if(weatherDesc) weatherDesc.textContent = 'Gagal memuat';
+            }
+        }
+
+        // 3. Export to CSV
+        function exportToCSV() {
+            const plant = appState.plants[appState.activePlant];
+            if (plant.history.length === 0) {
+                alert("Tidak ada data riwayat untuk diekspor.");
+                return;
+            }
+            let csvContent = "data:text/csv;charset=utf-8,Timestamp,KelembapanTanah(%)\r\n";
+            plant.history.forEach(row => {
+                const timestamp = new Date(row.t).toLocaleString('id-ID');
+                csvContent += `${timestamp},${row.y}\r\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `leaflink_${appState.activePlant}_history.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
 
         // --- UI UPDATE FUNCTION ---
         function updateUI() {
             const plant = appState.plants[appState.activePlant];
-            
-            // Update connection status
-            connectionStatusDesktopEl.textContent = appState.connection;
-            connectionStatusDesktopEl.classList.toggle('text-green-500', appState.connection === 'Tersambung');
-            connectionStatusDesktopEl.classList.toggle('text-yellow-500', appState.connection === 'Menyambung...');
-            connectionStatusDesktopEl.classList.toggle('text-red-500', appState.connection === 'Terputus');
+            if (connectionStatusDesktopEl) {
+                connectionStatusDesktopEl.textContent = appState.connection;
+                connectionStatusDesktopEl.classList.toggle('text-green-500', appState.connection === 'Tersambung');
+                connectionStatusDesktopEl.classList.toggle('text-yellow-500', appState.connection === 'Menyambung...');
+                connectionStatusDesktopEl.classList.toggle('text-red-500', appState.connection === 'Terputus');
+            }
 
-            // Update Dashboard
-            heroPlantName.textContent = plant.name;
-            moistureText.textContent = `${plant.moisture}%`;
-            temperatureText.textContent = `${plant.temperature.toFixed(1)}°C`;
-            humidityText.textContent = `${plant.humidity}%`;
+            if (heroPlantName) heroPlantName.textContent = plant.name;
+            if (moistureText) moistureText.textContent = `${plant.moisture}%`;
+            if (temperatureText) temperatureText.textContent = `${plant.temperature.toFixed(1)}°C`;
+            if (humidityText) humidityText.textContent = `${plant.humidity}%`;
 
             const isDry = plant.moisture < 35;
-            heroStatus.textContent = isDry ? 'Butuh Perhatian' : 'Terhidrasi Baik';
-            heroStatus.classList.toggle('text-[#FFB74D]', isDry);
-            heroStatus.classList.toggle('text-[#36E2A2]', !isDry);
-            heroIcon.classList.toggle('text-[#FFB74D]', isDry);
-            heroIcon.classList.toggle('text-[#36E2A2]', !isDry);
+            if(heroStatus) heroStatus.textContent = isDry ? 'Butuh Perhatian' : 'Terhidrasi Baik';
+            if(heroStatus) heroStatus.classList.toggle('text-[#FFB74D]', isDry);
+            if(heroStatus) heroStatus.classList.toggle('text-[#36E2A2]', !isDry);
+            if(heroIcon) heroIcon.classList.toggle('text-[#FFB74D]', isDry);
+            if(heroIcon) heroIcon.classList.toggle('text-[#36E2A2]', !isDry);
 
-            // Update Chart
             if (historyChart && historyChart.data) {
                 historyChart.data.datasets[0].data = plant.history;
                 historyChart.update('none');
@@ -304,25 +400,22 @@
         }
 
         // --- EVENT LISTENERS ---
-        plantSelector.addEventListener('change', (e) => {
+        if(plantSelector) plantSelector.addEventListener('change', (e) => {
             appState.activePlant = e.target.value;
             const plantData = appState.plants[appState.activePlant];
-            plantData.moisture = 0;
-            plantData.temperature = 0;
-            plantData.humidity = 0;
+            plantData.moisture = 0; plantData.temperature = 0; plantData.humidity = 0;
             updateUI();
         });
-
-        waterButton.addEventListener('click', () => {
-            client.publish(`${topics.kontrolPompa}/${appState.activePlant}`, '1', { qos: 0 });
+        if(waterButton) waterButton.addEventListener('click', () => client.publish(`${topics.kontrolPompa}/${appState.activePlant}`, '1', { qos: 0 }));
+        if(exportCsvButton) exportCsvButton.addEventListener('click', exportToCSV);
+        if(autoWaterToggle) autoWaterToggle.addEventListener('change', (e) => {
+            appState.settings.isAutomationEnabled = e.target.checked;
+            if(thresholdSetting) thresholdSetting.classList.toggle('hidden', !e.target.checked);
         });
-        
-        toggleButton.addEventListener('click', () => {
-            const isEnabled = toggleButton.dataset.enabled === 'true';
-            toggleButton.dataset.enabled = !isEnabled;
-            toggleButton.classList.toggle('bg-[#36E2A2]', !isEnabled);
-            toggleButton.classList.toggle('bg-gray-600', isEnabled);
-            toggleButton.firstElementChild.classList.toggle('translate-x-6', !isEnabled);
+        if(thresholdInput) thresholdInput.addEventListener('input', (e) => {
+            const value = e.target.value;
+            appState.settings.automationThreshold = parseInt(value, 10);
+            if(thresholdValue) thresholdValue.textContent = `${value}%`;
         });
 
         // --- CHART.JS SETUP ---
@@ -335,8 +428,7 @@
                 pointRadius: 0, tension: 0.4, fill: true,
             }]},
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false,
                 scales: {
                     x: { type: 'time', time: { unit: 'hour' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
                     y: { beginAtZero: true, max: 100, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
@@ -344,8 +436,10 @@
             }
         });
 
-        // Initial UI update
+        // --- INITIAL LOAD ---
         updateUI();
+        fetchWeather(); // Panggil fungsi cuaca saat aplikasi dimuat
+    });
     </script>
 </body>
 </html>
