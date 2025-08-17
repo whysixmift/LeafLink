@@ -40,7 +40,7 @@ This project is a static web application and does not require a complex build pr
 
 Clone the Repository:
 
-git clone https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git
+git clone github.com/whysixmift/LeafLink
 
 Open the File:
 Simply open the index.html file in your favorite browser (like Google Chrome, Firefox, or Edge).
