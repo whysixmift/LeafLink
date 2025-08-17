@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeafLink Advanced Dashboard</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- MQTT.js Library -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    
+    <!-- Chart.js for historical data graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Plus+Jakarta+Sans:wght@700;800&display=swap');
+        
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #121A18;
+            color: #E0E0E0;
+        }
+        .font-display { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .nav-item.active { background-color: #36E2A2; color: #121A18; }
+        .nav-item:not(.active):hover { background-color: #1D2926; }
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* Padding bottom for main content to avoid overlap with bottom nav */
+        main {
+            padding-bottom: 100px; /* Adjust as needed */
+        }
+    </style>
+</head>
+<body class="flex">
+
+    <!-- Sidebar Navigation (for Medium screens and up) -->
+    <aside class="hidden md:flex w-20 lg:w-64 bg-[#1D2926] h-screen p-4 flex-col items-center lg:items-start sticky top-0">
+        <div class="flex items-center mb-12 w-full">
+            <i data-lucide="leaf" class="text-[#36E2A2] w-8 h-8"></i>
+            <span class="font-display text-2xl font-bold ml-2 hidden lg:inline">LeafLink</span>
+        </div>
+        <nav class="flex flex-col space-y-4 w-full">
+            <a href="#dashboard" data-page="dashboard" class="nav-item active flex items-center p-3 rounded-lg transition-colors justify-center lg:justify-start">
+                <i data-lucide="layout-dashboard"></i>
+                <span class="ml-4 hidden lg:inline">Dashboard</span>
+            </a>
+            <a href="#history" data-page="history" class="nav-item flex items-center p-3 rounded-lg transition-colors justify-center lg:justify-start">
+                <i data-lucide="bar-chart-3"></i>
+                <span class="ml-4 hidden lg:inline">Riwayat</span>
+            </a>
+            <a href="#settings" data-page="settings" class="nav-item flex items-center p-3 rounded-lg transition-colors justify-center lg:justify-start">
+                <i data-lucide="settings"></i>
+                <span class="ml-4 hidden lg:inline">Pengaturan</span>
+            </a>
+        </nav>
+        <div class="mt-auto text-center w-full">
+             <p id="connection-status-desktop" class="text-sm text-red-500 hidden lg:block">Terputus</p>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-4 md:p-8 overflow-y-auto">
+        
+        <!-- Page: Dashboard -->
+        <div id="page-dashboard" class="page active">
+            <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+                <div>
+                    <h1 class="font-display text-3xl md:text-4xl font-extrabold">Dashboard</h1>
+                    <p class="text-gray-400">Ringkasan kondisi tanaman Anda.</p>
+                </div>
+                <div class="mt-4 md:mt-0 w-full md:w-auto">
+                    <label for="plant-selector" class="text-sm text-gray-400">Pilih Tanaman:</label>
+                    <select id="plant-selector" class="bg-[#1D2926] border border-gray-600 rounded-lg p-2 mt-1 w-full md:w-auto">
+                        <option value="monstera">Monstera</option>
+                        <option value="aglaonema">Aglaonema</option>
+                    </select>
+                </div>
+            </header>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Hero Card -->
+                <div class="lg:col-span-1 bg-[#1D2926] p-6 rounded-2xl flex flex-col items-center justify-center text-center">
+                    <h2 id="hero-plant-name" class="text-2xl font-bold">Monstera</h2>
+                    <div id="hero-icon" class="my-4 text-[#36E2A2] transition-colors duration-500"><i data-lucide="leaf" class="w-20 h-20"></i></div>
+                    <p id="hero-status" class="font-display text-xl font-bold text-[#36E2A2] transition-colors duration-500">Memuat Data...</p>
+                </div>
+                <!-- Data Cards -->
+                <div class="lg:col-span-2 grid grid-cols-2 gap-6">
+                    <div class="bg-[#1D2926] p-4 rounded-2xl text-center">
+                        <h3 class="text-gray-400 text-sm">Kelembapan Tanah</h3>
+                        <p id="moisture-text" class="font-display text-4xl md:text-5xl font-bold mt-2">...%</p>
+                    </div>
+                    <div class="bg-[#1D2926] p-4 rounded-2xl text-center">
+                        <h3 class="text-gray-400 text-sm">Suhu Udara</h3>
+                        <p id="temperature-text" class="font-display text-4xl md:text-5xl font-bold mt-2">...°C</p>
+                    </div>
+                    <div class="bg-[#1D2926] p-4 rounded-2xl text-center">
+                        <h3 class="text-gray-400 text-sm">Kelembapan Udara</h3>
+                        <p id="humidity-text" class="font-display text-4xl md:text-5xl font-bold mt-2">...%</p>
+                    </div>
+                    <button id="water-button" class="bg-[#36E2A2] text-[#121A18] p-4 rounded-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+                        <i data-lucide="cloud-drizzle" class="w-6 h-6 md:w-8 md:h-8"></i>
+                        <span class="font-display text-lg md:text-xl font-bold ml-3">Siram Manual</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page: History -->
+        <div id="page-history" class="page">
+            <header class="mb-8">
+                <h1 class="font-display text-3xl md:text-4xl font-extrabold">Riwayat Sensor</h1>
+                <p class="text-gray-400">Grafik data sensor selama 24 jam terakhir.</p>
+            </header>
+            <div class="bg-[#1D2926] p-2 md:p-4 rounded-2xl">
+                <canvas id="historyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Page: Settings -->
+        <div id="page-settings" class="page">
+            <header class="mb-8">
+                <h1 class="font-display text-3xl md:text-4xl font-extrabold">Pengaturan</h1>
+                <p class="text-gray-400">Kelola perangkat dan preferensi Anda.</p>
+            </header>
+            <div class="space-y-6 max-w-2xl">
+                <div class="bg-[#1D2926] p-6 rounded-2xl">
+                    <h3 class="font-bold text-xl mb-4">Notifikasi</h3>
+                    <div class="flex justify-between items-center">
+                        <label for="moisture-alert-toggle">Kirim notifikasi jika tanah kering</label>
+                        <button id="moisture-alert-toggle" class="w-14 h-8 rounded-full bg-gray-600 flex items-center p-1 transition-colors duration-300" data-enabled="false">
+                            <span class="w-6 h-6 rounded-full bg-white transform transition-transform duration-300"></span>
+                        </button>
+                    </div>
+                </div>
+                <div class="bg-[#1D2926] p-6 rounded-2xl">
+                    <h3 class="font-bold text-xl mb-4">Perangkat</h3>
+                    <p class="text-gray-400">Saat ini terhubung ke perangkat <strong id="device-id-display" class="text-white">...</strong></p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Bottom Navigation (for Small screens) -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-[#1D2926] flex justify-around p-2 border-t border-gray-700">
+        <a href="#dashboard" data-page="dashboard" class="nav-item active flex flex-col items-center p-2 rounded-lg transition-colors w-24">
+            <i data-lucide="layout-dashboard"></i>
+            <span class="text-xs mt-1">Dashboard</span>
+        </a>
+        <a href="#history" data-page="history" class="nav-item flex flex-col items-center p-2 rounded-lg transition-colors w-24">
+            <i data-lucide="bar-chart-3"></i>
+            <span class="text-xs mt-1">Riwayat</span>
+        </a>
+        <a href="#settings" data-page="settings" class="nav-item flex flex-col items-center p-2 rounded-lg transition-colors w-24">
+            <i data-lucide="settings"></i>
+            <span class="text-xs mt-1">Pengaturan</span>
+        </a>
+    </nav>
+
+    <script>
+        // --- INITIALIZATION ---
+        lucide.createIcons();
+
+        // --- STATE MANAGEMENT ---
+        const appState = {
+            activePlant: 'monstera',
+            plants: {
+                monstera: { name: 'Monstera', moisture: 0, temperature: 0, humidity: 0, history: [] },
+                aglaonema: { name: 'Aglaonema', moisture: 0, temperature: 0, humidity: 0, history: [] }
+            },
+            connection: 'Terputus'
+        };
+
+        // --- DOM ELEMENTS ---
+        const pages = document.querySelectorAll('.page');
+        const navLinks = document.querySelectorAll('.nav-item'); // Selects both sidebar and bottom nav items
+        const connectionStatusDesktopEl = document.getElementById('connection-status-desktop');
+        const plantSelector = document.getElementById('plant-selector');
+        // Dashboard elements
+        const heroPlantName = document.getElementById('hero-plant-name');
+        const heroIcon = document.getElementById('hero-icon');
+        const heroStatus = document.getElementById('hero-status');
+        const moistureText = document.getElementById('moisture-text');
+        const temperatureText = document.getElementById('temperature-text');
+        const humidityText = document.getElementById('humidity-text');
+        const waterButton = document.getElementById('water-button');
+        // Settings elements
+        const deviceIdDisplay = document.getElementById('device-id-display');
+        const toggleButton = document.getElementById('moisture-alert-toggle');
+
+
+        // --- PAGE NAVIGATION ---
+        function navigateTo(pageId) {
+            pages.forEach(p => p.classList.remove('active'));
+            document.getElementById(`page-${pageId}`).classList.add('active');
+            navLinks.forEach(l => {
+                l.classList.toggle('active', l.dataset.page === pageId);
+            });
+            window.location.hash = pageId;
+        }
+
+        navLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                navigateTo(link.dataset.page);
+            });
+        });
+
+        // Handle initial page load from URL hash
+        const initialPage = window.location.hash.substring(1) || 'dashboard';
+        navigateTo(initialPage);
+
+        // --- MQTT LOGIC ---
+        const clientId = 'leaflink_webapp_v2_' + Math.random().toString(16).substr(2, 8);
+        const host = 'wss://broker.hivemq.com:8884/mqtt';
+        const options = { keepalive: 60, clientId: clientId, clean: true, reconnectPeriod: 1000, connectTimeout: 30 * 1000 };
+        
+        console.log('Connecting to MQTT...');
+        const client = mqtt.connect(host, options);
+        
+        const baseTopic = 'tanaman';
+        const topics = {
+            suhu: `${baseTopic}/sensor/suhu`,
+            kelembapanUdara: `${baseTopic}/sensor/kelembapan_udara`,
+            kelembapanTanah: `${baseTopic}/sensor/kelembapan_tanah`,
+            kontrolPompa: `${baseTopic}/kontrol/pompa`
+        };
+
+        client.on('connect', () => {
+            appState.connection = 'Tersambung';
+            deviceIdDisplay.textContent = clientId;
+            updateUI();
+            Object.values(topics).forEach(topic => client.subscribe(topic, { qos: 0 }));
+        });
+
+        client.on('reconnect', () => {
+            appState.connection = 'Menyambung...';
+            updateUI();
+        });
+
+        client.on('error', (err) => {
+            console.error('Connection error: ', err);
+            client.end();
+        });
+
+        client.on('message', (topic, message) => {
+            const payload = message.toString();
+            const now = new Date();
+            const plantData = appState.plants[appState.activePlant];
+
+            if (topic === topics.kelembapanTanah) {
+                plantData.moisture = parseInt(payload, 10);
+                plantData.history.push({ t: now, y: plantData.moisture });
+            }
+            if (topic === topics.suhu) {
+                plantData.temperature = parseFloat(payload);
+            }
+            if (topic === topics.kelembapanUdara) {
+                plantData.humidity = parseInt(payload, 10);
+            }
+            
+            if (plantData.history.length > 100) plantData.history.shift();
+            
+            updateUI();
+        });
+
+        // --- UI UPDATE FUNCTION ---
+        function updateUI() {
+            const plant = appState.plants[appState.activePlant];
+            
+            // Update connection status
+            connectionStatusDesktopEl.textContent = appState.connection;
+            connectionStatusDesktopEl.classList.toggle('text-green-500', appState.connection === 'Tersambung');
+            connectionStatusDesktopEl.classList.toggle('text-yellow-500', appState.connection === 'Menyambung...');
+            connectionStatusDesktopEl.classList.toggle('text-red-500', appState.connection === 'Terputus');
+
+            // Update Dashboard
+            heroPlantName.textContent = plant.name;
+            moistureText.textContent = `${plant.moisture}%`;
+            temperatureText.textContent = `${plant.temperature.toFixed(1)}°C`;
+            humidityText.textContent = `${plant.humidity}%`;
+
+            const isDry = plant.moisture < 35;
+            heroStatus.textContent = isDry ? 'Butuh Perhatian' : 'Terhidrasi Baik';
+            heroStatus.classList.toggle('text-[#FFB74D]', isDry);
+            heroStatus.classList.toggle('text-[#36E2A2]', !isDry);
+            heroIcon.classList.toggle('text-[#FFB74D]', isDry);
+            heroIcon.classList.toggle('text-[#36E2A2]', !isDry);
+
+            // Update Chart
+            if (historyChart && historyChart.data) {
+                historyChart.data.datasets[0].data = plant.history;
+                historyChart.update('none');
+            }
+        }
+
+        // --- EVENT LISTENERS ---
+        plantSelector.addEventListener('change', (e) => {
+            appState.activePlant = e.target.value;
+            const plantData = appState.plants[appState.activePlant];
+            plantData.moisture = 0;
+            plantData.temperature = 0;
+            plantData.humidity = 0;
+            updateUI();
+        });
+
+        waterButton.addEventListener('click', () => {
+            client.publish(`${topics.kontrolPompa}/${appState.activePlant}`, '1', { qos: 0 });
+        });
+        
+        toggleButton.addEventListener('click', () => {
+            const isEnabled = toggleButton.dataset.enabled === 'true';
+            toggleButton.dataset.enabled = !isEnabled;
+            toggleButton.classList.toggle('bg-[#36E2A2]', !isEnabled);
+            toggleButton.classList.toggle('bg-gray-600', isEnabled);
+            toggleButton.firstElementChild.classList.toggle('translate-x-6', !isEnabled);
+        });
+
+        // --- CHART.JS SETUP ---
+        const ctx = document.getElementById('historyChart').getContext('2d');
+        const historyChart = new Chart(ctx, {
+            type: 'line',
+            data: { datasets: [{
+                label: 'Kelembapan Tanah (%)', data: [], borderColor: '#36E2A2',
+                backgroundColor: 'rgba(54, 226, 162, 0.1)', borderWidth: 2,
+                pointRadius: 0, tension: 0.4, fill: true,
+            }]},
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { type: 'time', time: { unit: 'hour' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
+                    y: { beginAtZero: true, max: 100, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
+                }
+            }
+        });
+
+        // Initial UI update
+        updateUI();
+    </script>
+</body>
+</html>
